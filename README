@@ -1,25 +1,34 @@
-Hi again!
+Hi!
 
-I think I got my port up and running.. please find it here:
+This my quick & dirty FreeRTOS port for ARM Cortex M4 cores with FPU support.
 
-  https://github.com/thomask77/FreeRTOS_ARM_CM4F
+The code is _not_ yet fully tested! Richard Barry warned, that there are a lot of corner cases to consider. So I fully expect it to be buggy under load. Use at your own risk! 
 
-Before I started, I did some performance measurements. As you said, the time for a full FPU state save/restore is quite long. A pair of vpush {s0-31}/vpop {s0-s31} takes around 400ns on my STM32F407 @ 168MHz. 
+Also this port doesn't strive for maximum performance, as it will often save the FPU context when it wouldn't be necessary. It uses extended stack frames everywhere, so it isn't memory efficient either.
 
-On the other hand, that translates to just ~68 cycles, which is not that bad at all if you consider the overall performance gain of the FPU vs. software emulation.
+Please discuss the code in this thread on freertos.org:
 
-Still, I don't want to have the performance hit for things like serial-port or motor-control interrupts. So I'll leave the hardware lazy-save mode enabled. 
+  https://sourceforge.net/projects/freertos/forums/forum/382005/topic/4761747
+
+Otherwise, it's running on my STM32F4 Discovery board, and can handle concurrent tasks using the FPU just fine.
+
+Have fun,
+Thomas Kindler <mail_cm4@t-kindler.de>
+
+-- Notes --
+
+Before I started, I did some performance measurements. The time for a full FPU state save/restore is quite long: A pair of vpush {s0-31}/vpop {s0-s31} takes around 400ns on my STM32F407 @ 168MHz.
+
+On the other hand, that translates to just ~68 cycles, which is not bad if you consider the overall performance gain of FPU vs. software emulation.
+
+Still, I don't want to have the performance hit for things like serial-port or motor-control interrupts. So I leave the hardware lazy-save mode enabled.
 
 Without an OS switching tasks, the CPU will just do the right thing anyways:
 
   The AAPCS says that s0-s15 are used as scratch registers, so they're automatically (lazy)-saved on exception entry. s16-s31 are saved by the compiler. There is a performance hit of ~200ns for entry/exit if the lazy save is actually triggered. For interrupts without FPU instructions there is no additional overhead.
 
-The only time when all registers must be saved and restored is for a task switch. This will take about 400ns longer than without FPU.
+The only time when all registers must be saved is for task switching. This will take about ~400ns longer than without FPU.
 
 I added the extended stack frame registers to pxPortInitialiseStack, vPortSVCHandler and xPortPendSVHandler. Additionally, vPortSVCHandler marks the stack frame as an extended frame (Bit 4, LR/EXC_RETURN value).
 
-
-I must warn that the code is _not_ yet fully tested! Use at your own risk!
-
-Have fun,
-Thomas Kindler <mail_cm4@t-kindler.de>
+Keep in mind, that stack frames are a lot bigger with FPU support! Each exception will stack 26 registers (vs. 8 without FPU). The task switch context contains 34 additional registers.
