@@ -1,6 +1,6 @@
 /*
     FreeRTOS V7.0.2 - Copyright (C) 2011 Real Time Engineers Ltd.
-	
+	Cortex M4F Port contributed by Thomas Kindler <mail_cm4@t-kindler.de>
 
     ***************************************************************************
      *                                                                       *
@@ -80,6 +80,7 @@ FreeRTOS.org versions prior to V4.4.0 did not include this definition. */
 
 /* Constants required to set up the initial stack. */
 #define portINITIAL_XPSR			( 0x01000000 )
+#define portINITIAL_EXC_RETURN		( 0xFFFFFFFD )
 
 /* The priority used by the kernel is assigned to a variable to make access
 from inline assembler easier. */
@@ -116,13 +117,6 @@ portSTACK_TYPE *pxPortInitialiseStack( portSTACK_TYPE *pxTopOfStack, pdTASK_CODE
 	/* Simulate the stack frame as it would be created by a context switch
 	interrupt. */
 	pxTopOfStack--; /* Offset added to account for the way the MCU uses the stack on entry/exit of interrupts. */
-
-	/* Extended stack frame */
-	pxTopOfStack -=  1;	/* Reserved */
-	pxTopOfStack -=  1;	/* FPSCR */
-	pxTopOfStack -= 16;	/* S0 - S15 */
-
-	/* Rest of the basic stack frame */
 	*pxTopOfStack = portINITIAL_XPSR;	/* xPSR */
 	pxTopOfStack--;
 	*pxTopOfStack = ( portSTACK_TYPE ) pxCode;	/* PC */
@@ -130,11 +124,8 @@ portSTACK_TYPE *pxPortInitialiseStack( portSTACK_TYPE *pxTopOfStack, pdTASK_CODE
 	*pxTopOfStack = 0;	/* LR */
 	pxTopOfStack -= 5;	/* R12, R3, R2 and R1. */
 	*pxTopOfStack = ( portSTACK_TYPE ) pvParameters;	/* R0 */
-
-	/* Registers saved by FreeRTOS */
-	pxTopOfStack -= 8;	/* R11, R10, R9, R8, R7, R6, R5 and R4. */
-	pxTopOfStack -= 16;	/* S16 - S31 */
-
+	pxTopOfStack -= 9;	/* R11, R10, R9, R8, R7, R6, R5 and R4. */
+	*pxTopOfStack = ( portSTACK_TYPE ) portINITIAL_EXC_RETURN;
 	return pxTopOfStack;
 }
 /*-----------------------------------------------------------*/
@@ -145,13 +136,11 @@ void vPortSVCHandler( void )
 					"	ldr	r3, pxCurrentTCBConst2		\n" /* Restore the context. */
 					"	ldr r1, [r3]					\n" /* Use pxCurrentTCBConst to get the pxCurrentTCB address. */
 					"	ldr r0, [r1]					\n" /* The first item in pxCurrentTCB is the task top of stack. */
+					"	ldmia r0!, {r14}				\n" /* Pop the EXC_RETURN value */
 					"	ldmia r0!, {r4-r11}				\n" /* Pop the registers that are not automatically saved on exception entry and the critical nesting count. */
-					"	vldmia r0!, {s16-s31}			\n" /* Pop the high FPU registers (also sets the FPCA bit, if it's not already set) */
 					"	msr psp, r0						\n" /* Restore the task stack pointer. */
 					"	mov r0, #0 						\n"
 					"	msr	basepri, r0					\n"
-					"	orr r14, #0xd					\n" /* Modify EXC_RETURN value to Thread Mode with Process stack */
-					"	bic r14, #0x10					\n" /* Modify EXC_RETURN value to extended stack frame */
 					"	bx r14							\n"
 					"									\n"
 					"	.align 2						\n"
@@ -240,8 +229,11 @@ void xPortPendSVHandler( void )
 	"	ldr	r3, pxCurrentTCBConst			\n" /* Get the location of the current TCB. */
 	"	ldr	r2, [r3]						\n"
 	"										\n"
-	"	vstmdb r0!, {s16-s31}				\n" /* Save the high FPU registers (will also trigger a lazy-save) */
 	"	stmdb r0!, {r4-r11}					\n" /* Save the remaining registers. */
+	"	tst r14, #0x10						\n"	/* Check for extended frame.. */
+	"	it eq								\n"
+	"	vstmdbeq r0!, {s16-s31}				\n"	/* Save the high FPU registers (will also trigger a lazy-save) */
+	"	stmdb r0!, {r14}					\n"	/* Save the EXC_RETURN value */
 	"	str r0, [r2]						\n" /* Save the new top of stack into the first member of the TCB. */
 	"										\n"
 	"	stmdb sp!, {r3, r14}				\n"
@@ -254,8 +246,11 @@ void xPortPendSVHandler( void )
 	"										\n"	/* Restore the context, including the critical nesting count. */
 	"	ldr r1, [r3]						\n"
 	"	ldr r0, [r1]						\n" /* The first item in pxCurrentTCB is the task top of stack. */
+	"	ldmia r0!, {r14}					\n"	/* Pop the EXC_RETURN value */
+	"	tst r14, #0x10						\n"	/* Check for extended frame.. */
+	"	it eq								\n"
+	"	vldmiaeq r0!, {s16-s31}				\n"	/* Pop the high FPU registers.*/
 	"	ldmia r0!, {r4-r11}					\n" /* Pop the registers. */
-	"	vldmia r0!, {s16-s31}				\n" /* Pop the high FPU registers. */
 	"	msr psp, r0							\n"
 	"	bx r14								\n"
 	"										\n"
