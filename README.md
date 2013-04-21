@@ -1,3 +1,14 @@
+# 2012-05-01: DEPRECATED!
+
+Since version 7.1.1, FreeRTOS has native support for Cortex-M4F controllers.
+
+I'll leave my project on github for reference only. Don't use it for production.
+
+have fun,
+Thomas Kindler <mail+stm32@t-kindler.de>
+
+----
+
 Hi!
 
 This is the second version of my FreeRTOS port for ARM Cortex M4 cores with FPU support.
@@ -15,10 +26,6 @@ This port is also fully compatible with the FPU lazy-save feature (which is enab
 Please discuss the code in the freertos.org forum:
 
   https://sourceforge.net/projects/freertos/forums/forum/382005/topic/4761747
-
-Have fun,
-Thomas Kindler <mail_cm4@t-kindler.de>
-
 
 -- Notes --
 
